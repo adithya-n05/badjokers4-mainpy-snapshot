@@ -1,0 +1,2 @@
+"""ShelterMed web app package."""
+

@@ -1,0 +1,16 @@
+[project]
+name = "sheltermed-voice-router"
+version = "0.1.0"
+description = "Field medical shelter app using actual hackathon router + Cactus transcription"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "google-genai>=1.30.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false

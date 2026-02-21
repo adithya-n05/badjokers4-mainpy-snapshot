@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShelterMed Assistant</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="bg a"></div>
+  <div class="bg b"></div>
+  <div class="grain"></div>
+
+  <header class="header rise" style="--d:0.04s">
+    <div>
+      <span class="badge">Field Medical Support</span>
+      <h1>ShelterMed Assistant</h1>
+      <p>Speak or type one request and the system coordinates multiple actions for your team.</p>
+    </div>
+    <aside class="status-card">
+      <div class="status-line">
+        <span id="routerDot" class="dot warn"></span>
+        <span id="routerText">Checking router...</span>
+      </div>
+      <div class="status-line">
+        <span id="voiceDot" class="dot warn"></span>
+        <span id="voiceText">Checking voice transcription...</span>
+      </div>
+      <small id="toolCount">Tools: -</small>
+    </aside>
+  </header>
+
+  <main class="grid">
+    <section class="panel composer rise" style="--d:0.12s">
+      <h2>Command Input</h2>
+      <p class="hint">Use plain language, for example: “Register Amina with severe wheeze, assign red triage, notify Dr. Khan, and set a 20 minute follow-up.”</p>
+
+      <div id="sampleWrap" class="samples"></div>
+
+      <label for="textInput">Type command</label>
+      <textarea id="textInput" rows="5" placeholder="Enter command for the shelter team..."></textarea>
+      <button id="sendTextBtn" class="btn primary">Run Command</button>
+
+      <hr>
+
+      <label>Voice command</label>
+      <div class="voice-row">
+        <button id="recordBtn" class="btn accent">Start Recording</button>
+        <span id="recordState" class="record-state">Not recording</span>
+      </div>
+      <p class="hint small">Voice transcription uses Cactus Whisper. Recording-only mode is enabled.</p>
+    </section>
+
+    <section class="panel result rise" style="--d:0.2s">
+      <h2>Action Feedback</h2>
+      <p id="summaryText" class="summary">No actions yet.</p>
+      <div id="transcriptBox" class="transcript hidden"></div>
+      <div id="feedbackList" class="feedback-list"></div>
+    </section>
+
+    <section class="panel details rise" style="--d:0.28s">
+      <h2>Current Shelter State</h2>
+      <div class="state-grid">
+        <div class="kpi"><span>Patients</span><strong id="kPatients">0</strong></div>
+        <div class="kpi"><span>Triage Queue</span><strong id="kQueue">0</strong></div>
+        <div class="kpi"><span>Referrals</span><strong id="kReferrals">0</strong></div>
+        <div class="kpi"><span>Follow-ups</span><strong id="kFollowups">0</strong></div>
+      </div>
+      <h3>Latest Activity</h3>
+      <pre id="activityBox">[]</pre>
+    </section>
+  </main>
+
+  <footer class="footer rise" style="--d:0.34s">
+    <span>Designed for non-technical clinical operators.</span>
+    <span>Prototype: verify critical decisions with clinical protocols.</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

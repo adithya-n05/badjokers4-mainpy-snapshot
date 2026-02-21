@@ -1,0 +1,3 @@
+cactus/
+apps/sheltermed_voice_router/.venv/
+apps/sheltermed_voice_router/**/__pycache__/

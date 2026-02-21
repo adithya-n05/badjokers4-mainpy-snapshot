@@ -68,6 +68,33 @@ def test_transcriber_rejects_none_like_payloads() -> None:
         assert "empty response" in str(exc).lower()
 
 
+def test_transcriber_forces_fresh_retry_on_stale_repeat() -> None:
+    tr = CactusTranscriber.__new__(CactusTranscriber)
+    tr._error = ""
+    tr._model = object()
+    tr._json = json
+    tr._cactus_init = lambda _path: object()
+    tr._cactus_destroy = lambda _m: None
+    tr._prompt = "<|startoftranscript|><|en|><|transcribe|><|notimestamps|>"
+    tr._last_audio_hash = "oldhash"
+    tr._last_transcript = "old transcript"
+    tr.whisper_model_path = "unused"
+
+    responses = iter(
+        [
+            '{"response":"old transcript"}',
+            '{"response":"new transcript"}',
+        ]
+    )
+    tr._cactus_transcribe = lambda *_args, **_kwargs: next(responses)
+    tr._ensure_model = CactusTranscriber._ensure_model.__get__(tr, CactusTranscriber)
+    tr._reset_model = CactusTranscriber._reset_model.__get__(tr, CactusTranscriber)
+    tr._run_transcription = CactusTranscriber._run_transcription.__get__(tr, CactusTranscriber)
+
+    out = tr.transcribe_wav_bytes(b"RIFFxxxxWAVEfmt data-different")
+    assert out == "new transcript"
+
+
 @dataclass
 class _FakeStatus:
     ready: bool

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import os
 import sys
 import tempfile
@@ -26,6 +27,8 @@ class CactusTranscriber:
         self._cactus_destroy = None
         self._cactus_transcribe = None
         self._prompt = "<|startoftranscript|><|en|><|transcribe|><|notimestamps|>"
+        self._last_audio_hash = ""
+        self._last_transcript = ""
         self._setup()
 
     def _setup(self) -> None:
@@ -87,6 +90,38 @@ class CactusTranscriber:
                     f"Failed to initialize Cactus Whisper model at {self.whisper_model_path}: {exc}"
                 ) from exc
 
+    def _reset_model(self) -> None:
+        if self._model is not None and self._cactus_destroy is not None:
+            try:
+                self._cactus_destroy(self._model)
+            except Exception:
+                pass
+            finally:
+                self._model = None
+
+    def _run_transcription(self, wav_path: str) -> str:
+        assert self._cactus_transcribe is not None
+        assert self._json is not None
+        prompts = [
+            self._prompt,
+            "<|startoftranscript|><|en|><|transcribe|>",
+        ]
+        for prompt in prompts:
+            try:
+                raw = self._cactus_transcribe(self._model, wav_path, prompt=prompt)
+                parsed = self._json.loads(raw)
+            except Exception:
+                continue
+            value = parsed.get("response")
+            if value is None:
+                value = parsed.get("text")
+            if value is None:
+                value = parsed.get("transcript")
+            text = "" if value is None else str(value).strip()
+            if text and text.lower() not in {"none", "null", "undefined"}:
+                return text
+        return ""
+
     def transcribe_base64_wav(self, audio_b64: str) -> str:
         try:
             audio_bytes = base64.b64decode(audio_b64, validate=True)
@@ -97,32 +132,34 @@ class CactusTranscriber:
     def transcribe_wav_bytes(self, audio_bytes: bytes) -> str:
         self._ensure_model()
         tmp_path = ""
+        audio_hash = hashlib.sha1(audio_bytes).hexdigest()
         try:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 f.write(audio_bytes)
                 tmp_path = f.name
-            assert self._cactus_transcribe is not None
-            assert self._json is not None
-            prompts = [
-                self._prompt,
-                "<|startoftranscript|><|en|><|transcribe|>",
-            ]
-            for prompt in prompts:
-                try:
-                    raw = self._cactus_transcribe(self._model, tmp_path, prompt=prompt)
-                    parsed = self._json.loads(raw)
-                except Exception:
-                    continue
-                value = parsed.get("response")
-                if value is None:
-                    value = parsed.get("text")
-                if value is None:
-                    value = parsed.get("transcript")
+            text = self._run_transcription(tmp_path)
 
-                text = "" if value is None else str(value).strip()
-                if text and text.lower() not in {"none", "null", "undefined"}:
-                    return text
-            raise RuntimeError("Transcription returned empty response")
+            # Guard against stale decoder state: if audio changed but transcript
+            # repeats exactly, force one fresh-model retry.
+            if (
+                text
+                and self._last_audio_hash
+                and self._last_transcript
+                and audio_hash != self._last_audio_hash
+                and text == self._last_transcript
+            ):
+                self._reset_model()
+                self._ensure_model()
+                retry_text = self._run_transcription(tmp_path)
+                if retry_text:
+                    text = retry_text
+
+            if not text:
+                raise RuntimeError("Transcription returned empty response")
+
+            self._last_audio_hash = audio_hash
+            self._last_transcript = text
+            return text
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 try:
@@ -131,8 +168,4 @@ class CactusTranscriber:
                     pass
 
     def close(self) -> None:
-        if self._model is not None and self._cactus_destroy is not None:
-            try:
-                self._cactus_destroy(self._model)
-            finally:
-                self._model = None
+        self._reset_model()

@@ -13,6 +13,8 @@ functiongemma_path = "cactus/weights/functiongemma-270m-it"
 _MODEL: Any = None
 _MODEL_PATH = ""
 _TOOL_CACHE: Dict[str, Dict[str, Any]] = {}
+_RESULT_CACHE: Dict[str, Dict[str, Any]] = {}
+_RESULT_CACHE_MAX = 128
 _CACTUS_INIT = None
 _CACTUS_COMPLETE = None
 _KNOWN_ITEMS = [
@@ -101,6 +103,24 @@ def _clauses(query: str) -> List[str]:
 def _tool_signature(tools: List[Dict[str, Any]]) -> str:
     names = [str(t.get("name", "")) for t in tools if isinstance(t, dict)]
     return "|".join(sorted(names))
+
+
+def _cache_key(query: str, tools: List[Dict[str, Any]]) -> str:
+    return f"{_tool_signature(tools)}::{_normalize(query).lower()}"
+
+
+def _cache_get(query: str, tools: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    key = _cache_key(query, tools)
+    item = _RESULT_CACHE.get(key)
+    if item is None:
+        return None
+    return dict(item)
+
+
+def _cache_put(query: str, tools: List[Dict[str, Any]], result: Dict[str, Any]) -> None:
+    if len(_RESULT_CACHE) >= _RESULT_CACHE_MAX:
+        _RESULT_CACHE.pop(next(iter(_RESULT_CACHE)))
+    _RESULT_CACHE[_cache_key(query, tools)] = dict(result)
 
 
 def _tool_text(tool: Dict[str, Any]) -> str:
@@ -515,14 +535,24 @@ def generate_hybrid(
             "router_profile": {"mode": "empty_query"},
         }
 
+    cached = _cache_get(query, tools)
+    if cached is not None:
+        cached["router_profile"] = {
+            **cached.get("router_profile", {}),
+            "cache_hit": True,
+        }
+        return cached
+
     fast = _sanitize_calls(_fastpath_calls(query, _tool_names(tools)), tools, query)
     if fast:
-        return {
+        result = {
             "function_calls": fast,
             "total_time_ms": max(1.0, (time.perf_counter() - t0) * 1000.0),
             "source": "cactus-general-fastpath",
             "router_profile": {"mode": "fastpath", "clauses": len(_clauses(query))},
         }
+        _cache_put(query, tools, result)
+        return result
 
     index = _build_index(tools)
     clauses = _clauses(query)
@@ -540,7 +570,7 @@ def generate_hybrid(
             source = "semantic-fallback"
         else:
             source = "cactus-general"
-        return {
+        result = {
             "function_calls": calls,
             "total_time_ms": max(1.0, (time.perf_counter() - t0) * 1000.0),
             "source": source,
@@ -550,9 +580,11 @@ def generate_hybrid(
                 "clauses": len(clauses),
             },
         }
+        _cache_put(query, tools, result)
+        return result
     except Exception as exc:
         calls = _semantic_fallback(query, tools)
-        return {
+        result = {
             "function_calls": calls,
             "total_time_ms": max(1.0, (time.perf_counter() - t0) * 1000.0),
             "source": "semantic-fallback",
@@ -561,3 +593,5 @@ def generate_hybrid(
                 "error": str(exc),
             },
         }
+        _cache_put(query, tools, result)
+        return result

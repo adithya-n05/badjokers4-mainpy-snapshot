@@ -110,8 +110,14 @@ class CactusTranscriber:
                 else:
                     raw = self._cactus_transcribe(self._model, tmp_path)
                 parsed = self._json.loads(raw)
-                text = str(parsed.get("response", "")).strip()
-                if text:
+                value = parsed.get("response")
+                if value is None:
+                    value = parsed.get("text")
+                if value is None:
+                    value = parsed.get("transcript")
+
+                text = "" if value is None else str(value).strip()
+                if text and text.lower() not in {"none", "null", "undefined"}:
                     return text
             raise RuntimeError("Transcription returned empty response")
         finally:

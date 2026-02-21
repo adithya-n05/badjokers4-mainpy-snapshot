@@ -163,7 +163,9 @@ class AppContext:
             return 400, {"ok": False, "error": ts.error}
 
         t0 = time.perf_counter()
-        transcript = self.transcriber.transcribe_base64_wav(audio_b64)
+        transcript = " ".join(self.transcriber.transcribe_base64_wav(audio_b64).split())
+        if not transcript or transcript.lower() in {"none", "null", "undefined"}:
+            return 400, {"ok": False, "error": "Voice input was unclear. Please try recording again."}
         transcribe_ms = (time.perf_counter() - t0) * 1000.0
         code, payload = self.process_command(transcript, input_mode="voice")
         if code == 200:

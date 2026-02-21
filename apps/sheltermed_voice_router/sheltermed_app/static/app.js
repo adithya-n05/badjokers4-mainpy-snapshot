@@ -108,10 +108,13 @@ function renderState(state) {
 function renderOutcome(payload) {
   els.summaryText.textContent = payload.summary || "Completed.";
 
-  if (payload.transcript) {
+  const transcriptText = (payload.transcript || "").trim();
+  const validTranscript = transcriptText && !["none", "null", "undefined"].includes(transcriptText.toLowerCase());
+
+  if (validTranscript) {
     els.transcriptBox.classList.remove("hidden");
-    els.transcriptBox.textContent = `Transcript: ${payload.transcript}`;
-    els.textInput.value = payload.transcript;
+    els.transcriptBox.textContent = `Transcript: ${transcriptText}`;
+    els.textInput.value = transcriptText;
   } else {
     els.transcriptBox.classList.add("hidden");
     els.transcriptBox.textContent = "";

@@ -36,6 +36,7 @@ let processorNode = null;
 let recordedChunks = [];
 let recordedSampleRate = 16000;
 let isProcessingVoice = false;
+let maxAbsSample = 0;
 
 function setDot(dotEl, ok) {
   dotEl.className = `dot ${ok ? "ok" : "warn"}`;
@@ -203,6 +204,12 @@ async function cleanupRecording() {
   try {
     if (sourceNode) sourceNode.disconnect();
   } catch (_) {}
+  processorNode = null;
+  sourceNode = null;
+}
+
+async function resetAudioSession() {
+  await cleanupRecording();
   try {
     if (mediaStream) {
       for (const t of mediaStream.getTracks()) t.stop();
@@ -213,22 +220,36 @@ async function cleanupRecording() {
       await audioCtx.close();
     }
   } catch (_) {}
-  processorNode = null;
-  sourceNode = null;
   mediaStream = null;
   audioCtx = null;
 }
 
+async function ensureAudioSession() {
+  if (!mediaStream || mediaStream.getTracks().every((t) => t.readyState === "ended")) {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+  if (!audioCtx || audioCtx.state === "closed") {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") {
+    await audioCtx.resume();
+  }
+}
+
 async function startRecording() {
   await cleanupRecording();
-  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  await ensureAudioSession();
   recordedSampleRate = audioCtx.sampleRate || 16000;
   sourceNode = audioCtx.createMediaStreamSource(mediaStream);
-  processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+  processorNode = audioCtx.createScriptProcessor(2048, 1, 1);
   recordedChunks = [];
+  maxAbsSample = 0;
   processorNode.onaudioprocess = (e) => {
     const channel = e.inputBuffer.getChannelData(0);
+    for (let i = 0; i < channel.length; i += 1) {
+      const abs = Math.abs(channel[i]);
+      if (abs > maxAbsSample) maxAbsSample = abs;
+    }
     recordedChunks.push(new Float32Array(channel));
   };
   sourceNode.connect(processorNode);
@@ -244,6 +265,9 @@ async function stopRecordingAndSubmit() {
     const durationSec = merged.length / Math.max(1, recordedSampleRate);
     if (durationSec < 0.45) {
       throw new Error("Recording too short. Please speak for at least half a second.");
+    }
+    if (maxAbsSample < 0.003) {
+      throw new Error("No audible speech detected. Check microphone input and try again.");
     }
     const wav = encodeWav(merged, recordedSampleRate);
     const b64 = b64FromArrayBuffer(wav);
@@ -271,6 +295,7 @@ async function toggleRecording() {
       els.recordState.textContent = "Recording...";
       els.recordBtn.disabled = false;
     } catch (err) {
+      await resetAudioSession();
       alert(`Could not start recording: ${err.message}`);
     }
     return;

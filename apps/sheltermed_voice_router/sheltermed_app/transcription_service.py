@@ -103,13 +103,16 @@ class CactusTranscriber:
                 tmp_path = f.name
             assert self._cactus_transcribe is not None
             assert self._json is not None
-            prompts = [self._prompt, ""]
+            prompts = [
+                self._prompt,
+                "<|startoftranscript|><|en|><|transcribe|>",
+            ]
             for prompt in prompts:
-                if prompt:
+                try:
                     raw = self._cactus_transcribe(self._model, tmp_path, prompt=prompt)
-                else:
-                    raw = self._cactus_transcribe(self._model, tmp_path)
-                parsed = self._json.loads(raw)
+                    parsed = self._json.loads(raw)
+                except Exception:
+                    continue
                 value = parsed.get("response")
                 if value is None:
                     value = parsed.get("text")

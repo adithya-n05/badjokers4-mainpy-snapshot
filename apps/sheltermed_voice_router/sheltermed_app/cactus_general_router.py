@@ -356,6 +356,82 @@ def _sanitize_calls(calls: List[Dict[str, Any]], tools: List[Dict[str, Any]], qu
                 ptype = str(props.get(key, {}).get("type", "string")).lower()
                 cleaned[key] = _fallback_for_param(key, ptype, query)
 
+        # Tool-specific normalization for higher practical accuracy.
+        if name == "check_inventory":
+            item = _normalize(cleaned.get("item", "")).lower()
+            if item in {"", "check", "inventory", "stock", "supply", "supplies"}:
+                cleaned["item"] = _find_item(query)
+
+        elif name == "request_restock":
+            item = _normalize(cleaned.get("item", "")).lower()
+            if item in {"", "restock", "request", "stock", "supply", "supplies"}:
+                cleaned["item"] = _find_item(query)
+            qty = cleaned.get("quantity", 0)
+            try:
+                qty = int(qty)
+            except Exception:
+                qty = _extract_number(query, default=10)
+            cleaned["quantity"] = max(1, qty)
+            cleaned["priority"] = _find_priority(_normalize(cleaned.get("priority", "")) + " " + query)
+
+        elif name == "notify_team":
+            recipient = _normalize(cleaned.get("recipient", ""))
+            if recipient.lower() in {"", "unknown", "team"}:
+                m = re.search(r"\bnotify\s+(?:the\s+)?([A-Za-z][A-Za-z .'-]{1,40}?)(?:\s+(?:to|about|that)\b|[,.;]|$)", query, re.IGNORECASE)
+                recipient = _normalize(m.group(1)) if m else "Medical Team"
+            message = _normalize(cleaned.get("message", ""))
+            if len(message) < 4:
+                m2 = re.search(r"\b(?:to|about|that)\s+(.+)$", query, re.IGNORECASE)
+                message = _normalize(m2.group(1)) if m2 else _normalize(query)
+            cleaned["recipient"] = recipient
+            cleaned["message"] = message
+            cleaned["channel"] = "internal"
+
+        elif name == "register_patient":
+            patient_name = _normalize(cleaned.get("patient_name", ""))
+            if patient_name.lower() in {"", "unknown"}:
+                patient_name = _extract_name(query)
+            complaint = _normalize(cleaned.get("main_complaint", ""))
+            if complaint.lower() in {"", "unspecified complaint"}:
+                cm = re.search(r"\bwith\s+(.+?)(?:\s+(?:in\s+zone|assign|set|notify|and|then)\b|[,.;]|$)", query, re.IGNORECASE)
+                complaint = _normalize(cm.group(1)) if cm else "unspecified complaint"
+            cleaned["patient_name"] = patient_name
+            cleaned["main_complaint"] = complaint
+            if "location_zone" in props:
+                cleaned["location_zone"] = _extract_zone(query)
+
+        elif name == "assign_triage_level":
+            cleaned["triage_level"] = _find_triage(_normalize(cleaned.get("triage_level", "")) + " " + query)
+            pn = _normalize(cleaned.get("patient_name", ""))
+            if pn.lower() in {"", "unknown"}:
+                cleaned["patient_name"] = _extract_name(query)
+
+        elif name == "set_followup_timer":
+            mins = cleaned.get("minutes", 0)
+            try:
+                mins = int(mins)
+            except Exception:
+                mins = _extract_number(query, default=20)
+            cleaned["minutes"] = max(1, mins)
+            pn = _normalize(cleaned.get("patient_name", ""))
+            if pn.lower() in {"", "unknown"}:
+                cleaned["patient_name"] = _extract_name(query)
+            if "task" in props and not _normalize(cleaned.get("task", "")):
+                cleaned["task"] = "reassess"
+
+        elif name == "calculate_medication_dose":
+            cleaned["medication"] = _find_med(_normalize(cleaned.get("medication", "")) + " " + query)
+            if "weight_kg" in props:
+                w = cleaned.get("weight_kg", 0)
+                try:
+                    w = int(w)
+                except Exception:
+                    w = _extract_number(query, default=0)
+                cleaned["weight_kg"] = max(0, w)
+            pn = _normalize(cleaned.get("patient_name", ""))
+            if pn.lower() in {"", "unknown"}:
+                cleaned["patient_name"] = _extract_name(query)
+
         sig = (name, tuple(sorted((k, str(v).lower()) for k, v in cleaned.items())))
         if sig in seen:
             continue

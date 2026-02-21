@@ -9,6 +9,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+_INVALID_TRANSCRIPTS = {
+    "none",
+    "null",
+    "undefined",
+    "[blank_audio]",
+    "blank_audio",
+    "<|nocaptions|>",
+    "[silence]",
+}
+
 
 @dataclass
 class TranscriptionStatus:
@@ -118,7 +128,7 @@ class CactusTranscriber:
             if value is None:
                 value = parsed.get("transcript")
             text = "" if value is None else str(value).strip()
-            if text and text.lower() not in {"none", "null", "undefined"}:
+            if text and text.lower() not in _INVALID_TRANSCRIPTS:
                 return text
         return ""
 

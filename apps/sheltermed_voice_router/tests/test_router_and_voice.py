@@ -140,3 +140,24 @@ def test_voice_rejects_none_transcript() -> None:
     code, payload = AppContext.process_voice_audio(fake_ctx, "Zm9v")
     assert code == 400
     assert "unclear" in payload["error"].lower()
+
+
+def test_voice_rejects_blank_audio_marker() -> None:
+    fake_ctx = AppContext.__new__(AppContext)
+    fake_ctx.transcriber = _FakeTranscriber(["[BLANK_AUDIO]"])
+    fake_ctx.process_command = lambda text, input_mode: (200, {"ok": True, "command_text": text, "input_mode": input_mode})
+    code, payload = AppContext.process_voice_audio(fake_ctx, "Zm9v")
+    assert code == 400
+    assert "unclear" in payload["error"].lower()
+
+
+def test_router_sanitizes_notify_and_restock_arguments() -> None:
+    out = cactus_general_router.generate_hybrid(
+        messages=[{"role": "user", "content": "notify respiratory team to prepare transfer and urgent restock oxygen 15"}],
+        tools=TOOL_DEFINITIONS,
+    )
+    by_name = {c["name"]: c["arguments"] for c in out["function_calls"]}
+    assert by_name["request_restock"]["item"] == "oxygen cylinder"
+    assert int(by_name["request_restock"]["quantity"]) == 15
+    assert by_name["request_restock"]["priority"] == "urgent"
+    assert "respiratory team" in by_name["notify_team"]["recipient"].lower()
